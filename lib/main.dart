@@ -125,27 +125,6 @@ class App extends StatelessWidget {
   }
 }
 
-/*class SnapSheetExample extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: SnappingSheet(
-        sheetBelow: SnappingSheetContent(
-            child: Container(
-              color: Colors.red,
-            ),
-            heightBehavior: SnappingSheetHeight.fit()),
-
-      grabbing: Container(
-        color: Colors.blue,
-      ),
-      ),
-    );
-  }
-}*/
-
-
-
 
 class MyApp extends StatelessWidget {
   @override
@@ -187,7 +166,6 @@ class _RandomWordsState extends State<RandomWords> with SingleTickerProviderStat
   }
 
   final List<WordPair> _suggestions = <WordPair>[];
-  //String _uploadedImageURL;
 
   @override
   Widget build(BuildContext context) {
@@ -261,28 +239,16 @@ class _RandomWordsState extends State<RandomWords> with SingleTickerProviderStat
                                               style: TextStyle(fontSize: 16)),
                                           TextField(
                                             controller: _email,
-                                            /*validator: (value) =>
-                                                (value.isEmpty)
-                                                    ? "Please Enter Email"
-                                                    : null,*/
                                             decoration: InputDecoration(
-                                                //prefixIcon: Icon(Icons.email),
                                                 labelText: "Email",
-                                                //border: OutlineInputBorder()
                                             ),
                                           ),
                                           Divider(),
                                           TextField(
                                             controller: _password,
                                             obscureText: true,
-                                            /*validator: (value) =>
-                                                (value.isEmpty)
-                                                    ? "Please Enter Password"
-                                                    : null,*/
                                             decoration: InputDecoration(
-                                                //prefixIcon: Icon(Icons.lock),
                                                 labelText: "Password",
-                                                //border: OutlineInputBorder()
                                                ),
                                           ),
                                           user.status == Status.Authenticating
@@ -343,20 +309,14 @@ class _RandomWordsState extends State<RandomWords> with SingleTickerProviderStat
                                                       color: Colors.teal,
                                                       child: MaterialButton(
                                                         onPressed: () async {
-                                                          /*if (_formKey
-                                                              .currentState
-                                                              .validate()) {*/
                                                               _password2 = TextEditingController(text: "");
                                                               showModalBottomSheet<void>(
                                                                 context: context,
                                                                 builder: (BuildContext context) {
                                                                   return Container(
                                                                     height: 230,
-                                                                    //color: Colors.amber,
                                                                     child: Center(
                                                                       child: Column(
-                                                                        //mainAxisAlignment: MainAxisAlignment.center,
-                                                                        //mainAxisSize: MainAxisSize.min,
                                                                         children: <Widget>[
                                                                           Padding(
                                                                             padding: const EdgeInsets.fromLTRB(8.0, 18.0, 8.0, 4.0),
@@ -449,11 +409,11 @@ class _RandomWordsState extends State<RandomWords> with SingleTickerProviderStat
              ),
            ),
          ),
-         onMove: (moveAmount) {
+         /*onMove: (moveAmount) {
            setState(() {
              _moveAmount = moveAmount;
            });
-         },
+         },*/
          snappingSheetController: _snappingSheetController,
          snapPositions: const [
            SnapPosition(positionPixel: 0.0, snappingCurve: Curves.elasticOut, snappingDuration: Duration(milliseconds: 850)),
@@ -551,11 +511,9 @@ class SheetContent extends StatelessWidget {
     return Container(
       color: Colors.white,
       child: Container(
-          //color: Colors.white,
-          child: ListView(children: [
-            ListTile(
-              leading: CircleAvatar(radius: 30,
-                  backgroundColor: Colors.blue,
+          child: ListView(
+              children: [
+                ListTile(leading: CircleAvatar(radius: 30, backgroundColor: Colors.blue,
                 ///check if user has a photo...
                 //backgroundImage: Icons.add_a_photo,
                   //backgroundImage: //user.profilePic.image
