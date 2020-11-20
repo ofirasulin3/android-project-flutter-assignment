@@ -512,11 +512,6 @@ class _RandomWordsState extends State<RandomWords> with SingleTickerProviderStat
             ),
           ),
         ),
-        /*onMove: (moveAmount) {
-           setState(() {
-             _moveAmount = moveAmount;
-           });
-         },*/
         snappingSheetController: _snappingSheetController,
         snapPositions: const [
           SnapPosition(positionPixel: 0.0,
