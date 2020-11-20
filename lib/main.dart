@@ -6,7 +6,9 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:provider/provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:snapping_sheet/snapping_sheet.dart';
-import 'package:file_picker/file_picker.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:image_picker/image_picker.dart';
+import 'dart:io';
 
 enum Status {
   Uninitialized,
@@ -21,6 +23,7 @@ class UserRepository with ChangeNotifier {
   User _user;
   Status _status = Status.Uninitialized;
   String _currentUserEmail = "";
+  Image _avatar;
 
   UserRepository.instance() : _auth = FirebaseAuth.instance {
     _auth.authStateChanges().listen(_onAuthStateChanged);
@@ -29,6 +32,8 @@ class UserRepository with ChangeNotifier {
   Status get status => _status;
   User get user => _user;
   String get currentUserEmail => _currentUserEmail;
+  Image get avatar => _avatar;
+
 
   Future<bool> signIn(String email, String password) async {
     try {
@@ -37,6 +42,9 @@ class UserRepository with ChangeNotifier {
       notifyListeners();
       await _auth.signInWithEmailAndPassword(email: email, password: password);
       _currentUserEmail = email;
+      notifyListeners();
+      //Update avatar
+      _avatar = Image.network(await getUserAvatarUrl(email));
       _updateCollection(email);
       _saved.clear();
       return true;
@@ -46,6 +54,22 @@ class UserRepository with ChangeNotifier {
       notifyListeners();
       return false;
     }
+  }
+
+  void _addOnePair(String currentUserEmail, WordPair pair) {
+    String docName = pair.asPascalCase;
+    FirebaseFirestore.instance.collection(currentUserEmail).doc(docName).set({
+    });
+  }
+
+  void notifyListenersAux(){
+    notifyListeners();
+  }
+
+  void _removeOnePair(String currentUserEmail, WordPair pair) {
+    String docName = pair.asPascalCase;
+    FirebaseFirestore.instance..collection(currentUserEmail).doc(docName).delete();
+    notifyListeners();
   }
 
   Future<bool> signUpAndSignIn(String email, String password) async {
@@ -56,12 +80,17 @@ class UserRepository with ChangeNotifier {
       await _auth.createUserWithEmailAndPassword(email: email, password: password);
       await _auth.signInWithEmailAndPassword(email: email, password: password);
       _currentUserEmail = email;
+      notifyListeners();
+
+      //Update default avatar
+      var _avatarUrl = await getDefaultAvatarUrl();
+      updateAvatar(_avatarUrl);
+      _avatar = Image.network(_avatarUrl);
       _updateCollection(email);
       _saved.clear();
       return true;
     } catch (e) {
       _status = Status.Unsuccessful;
-
       notifyListeners();
       return false;
     }
@@ -71,9 +100,37 @@ class UserRepository with ChangeNotifier {
     _auth.signOut();
     _status = Status.Guest;
     _currentUserEmail = "";
+    _avatar = null;
     //When Signing out => regular main screen. will be in OnPressed
     notifyListeners();
     return Future.delayed(Duration.zero);
+  }
+
+  void updateAvatar(String _avatarFilePath) async {
+    await (FirebaseStorage.instance.ref('UsersAvatars')
+        .child(_currentUserEmail)
+        .putFile(File(_avatarFilePath)));
+    _avatar = Image.file(File(_avatarFilePath));
+    notifyListeners();//So that the new avatar will be showen immediately
+  }
+
+  Future<String> getUserAvatarUrl(String email) async {
+    String result;
+    try {
+      result = await (FirebaseStorage.instance.ref('UsersAvatars')
+          .child(email)
+          .getDownloadURL());
+    }
+    catch(e){
+      result = await getDefaultAvatarUrl();
+    }
+    return result;
+  }
+
+  Future<String> getDefaultAvatarUrl() async {
+    return await (FirebaseStorage.instance.ref('UsersAvatars')
+        .child('DefaultAvatar.png')
+        .getDownloadURL());
   }
 
   Future<void> _onAuthStateChanged(User firebaseUser) async {
@@ -154,17 +211,6 @@ class RandomWords extends StatefulWidget {
 class _RandomWordsState extends State<RandomWords> with SingleTickerProviderStateMixin {
   var _snappingSheetController = SnappingSheetController();
 
-  void _addOnePair(String currentUserEmail, WordPair pair) {
-      String docName = pair.asPascalCase;
-      FirebaseFirestore.instance.collection(currentUserEmail).doc(docName).set({
-      });
-  }
-
-  void _removeOnePair(String currentUserEmail, WordPair pair) {
-    String docName = pair.asPascalCase;
-    FirebaseFirestore.instance..collection(currentUserEmail).doc(docName).delete();
-  }
-
   final List<WordPair> _suggestions = <WordPair>[];
 
   @override
@@ -206,67 +252,75 @@ class _RandomWordsState extends State<RandomWords> with SingleTickerProviderStat
                       });
                 default:
                   return Builder(
-                    builder: (context) => IconButton(
-                        icon: Icon(Icons.login),
-                        onPressed: () {
-                            TextEditingController _email;
-                            TextEditingController _password;
-                            TextEditingController _password2;
+                    builder: (context) =>
+                        IconButton(
+                            icon: Icon(Icons.login),
+                            onPressed: () {
+                              TextEditingController _email;
+                              TextEditingController _password;
+                              TextEditingController _password2;
 
-                            final _formKey = GlobalKey<FormState>();
-                            final _key = GlobalKey<ScaffoldState>();
+                              final _formKey = GlobalKey<FormState>();
+                              final _key = GlobalKey<ScaffoldState>();
 
-                            _email = TextEditingController(text: "");
-                            _password = TextEditingController(text: "");
+                              _email = TextEditingController(text: "");
+                              _password = TextEditingController(text: "");
 
-                            //Pushing the login screen
-                            Navigator.of(context).push(
-                              MaterialPageRoute<void>(
-                                builder: (BuildContext context) {
-                                  return Scaffold(
-                                    key: _key,
-                                    appBar: AppBar(
-                                      title: Text('Login'),
-                                    ),
-                                    body: Form(
-                                      key: _formKey,
-                                      child: Padding(
-                                          padding: const EdgeInsets.fromLTRB(12.0, 32.0, 8.0, 8.0),
-                                          child:Column(
-                                        children: <Widget>[
-                                          Text(
-                                              'Welcome to Startup Names Generator, please log in below\n\n',
-                                              style: TextStyle(fontSize: 16)),
-                                          TextField(
-                                            controller: _email,
-                                            decoration: InputDecoration(
-                                                labelText: "Email",
-                                            ),
-                                          ),
-                                          Divider(),
-                                          TextField(
-                                            controller: _password,
-                                            obscureText: true,
-                                            decoration: InputDecoration(
-                                                labelText: "Password",
-                                               ),
-                                          ),
-                                          user.status == Status.Authenticating
-                                              ? Center(
-                                                  child:
-                                                      Padding(
-                                                        padding: const EdgeInsets.fromLTRB(0.0, 27.0, 0.0, 8.0),
-                                                        child: CircularProgressIndicator(),
-                                                      ))
-                                              : Column(
-                                                children: [
-                                                  Padding(
-                                                      padding: const EdgeInsets.fromLTRB(0.0, 20.0, 0.0, 8.0),
+                              //Pushing the login screen
+                              Navigator.of(context).push(
+                                MaterialPageRoute<void>(
+                                  builder: (BuildContext context) {
+                                    return Scaffold(
+                                      key: _key,
+                                      appBar: AppBar(
+                                        title: Text('Login'),
+                                      ),
+                                      body: Form(
+                                        key: _formKey,
+                                        child: Padding(
+                                            padding: const EdgeInsets.fromLTRB(
+                                                12.0, 32.0, 8.0, 8.0),
+                                            child: Column(
+                                              children: <Widget>[
+                                                Text(
+                                                    'Welcome to Startup Names Generator, please log in below\n\n',
+                                                    style: TextStyle(
+                                                        fontSize: 16)),
+                                                TextField(
+                                                  controller: _email,
+                                                  decoration: InputDecoration(
+                                                    labelText: "Email",
+                                                  ),
+                                                ),
+                                                Divider(),
+                                                TextField(
+                                                  controller: _password,
+                                                  obscureText: true,
+                                                  decoration: InputDecoration(
+                                                    labelText: "Password",
+                                                  ),
+                                                ),
+                                                user.status ==
+                                                    Status.Authenticating
+                                                    ? Center(
+                                                    child:
+                                                    Padding(
+                                                      padding: const EdgeInsets
+                                                          .fromLTRB(
+                                                          0.0, 27.0, 0.0, 8.0),
+                                                      child: CircularProgressIndicator(),
+                                                    ))
+                                                    : Column(
+                                                  children: [
+                                                    Padding(
+                                                      padding: const EdgeInsets
+                                                          .fromLTRB(
+                                                          0.0, 20.0, 0.0, 8.0),
                                                       child: Material(
                                                         elevation: 5.0,
                                                         borderRadius:
-                                                            BorderRadius.circular(
-                                                                30.0),
+                                                        BorderRadius.circular(
+                                                            30.0),
                                                         color: Colors.red,
                                                         child: MaterialButton(
                                                           onPressed: () async {
@@ -275,17 +329,20 @@ class _RandomWordsState extends State<RandomWords> with SingleTickerProviderStat
                                                                 .validate()) {
                                                               if (!await user
                                                                   .signIn(
-                                                                      _email.text,
-                                                                      _password
-                                                                          .text)) {
-                                                                _key.currentState
+                                                                  _email.text,
+                                                                  _password
+                                                                      .text)) {
+                                                                _key
+                                                                    .currentState
                                                                     .showSnackBar(
-                                                                        SnackBar(
-                                                                  content: Text(
-                                                                      "There was an error logging into the app"),
-                                                                ));
+                                                                    SnackBar(
+                                                                      content: Text(
+                                                                          "There was an error logging into the app"),
+                                                                    ));
                                                               } else {
-                                                                Navigator.of(context).pop();
+                                                                Navigator.of(
+                                                                    context)
+                                                                    .pop();
                                                               }
                                                             }
                                                           },
@@ -293,136 +350,184 @@ class _RandomWordsState extends State<RandomWords> with SingleTickerProviderStat
                                                             "                                    Log in                                        ",
                                                             style: TextStyle(
                                                                 color:
-                                                                    Colors.white,
+                                                                Colors.white,
                                                                 fontSize: 16),
                                                           ),
                                                         ),
                                                       ),
                                                     ),
-                                                  Padding(
-                                                    padding: const EdgeInsets.fromLTRB(0.0, 14.0, 0.0, 8.0),
-                                                    child: Material(
-                                                      elevation: 5.0,
-                                                      borderRadius:
-                                                      BorderRadius.circular(
-                                                          30.0),
-                                                      color: Colors.teal,
-                                                      child: MaterialButton(
-                                                        onPressed: () async {
-                                                              _password2 = TextEditingController(text: "");
-                                                              showModalBottomSheet<void>(
-                                                                context: context,
-                                                                builder: (BuildContext context) {
-                                                                  return Container(
-                                                                    height: 230,
-                                                                    child: Center(
-                                                                      child: Column(
-                                                                        children: <Widget>[
-                                                                          Padding(
-                                                                            padding: const EdgeInsets.fromLTRB(8.0, 18.0, 8.0, 4.0),
-                                                                            child: const Text('Please confirm your password below:'),
-                                                                          ),
-                                                                          Divider(),
-                                                                          Padding(
-                                                                            padding: const EdgeInsets.fromLTRB(12.0, 16.0, 8.0, 8.0),
-                                                                            child: TextFormField(
-                                                                              controller: _password2,
-                                                                              obscureText: true,
-                                                                              decoration: InputDecoration(
-                                                                                errorText: ((_password2.text != "") && (_password.text != _password2.text)) ? "Passwords must match" : null,
-                                                                                labelText: "Password",
-                                                                              ),
+                                                    Padding(
+                                                      padding: const EdgeInsets
+                                                          .fromLTRB(
+                                                          0.0, 14.0, 0.0, 8.0),
+                                                      child: Material(
+                                                        elevation: 5.0,
+                                                        borderRadius:
+                                                        BorderRadius.circular(
+                                                            30.0),
+                                                        color: Colors.teal,
+                                                        child: MaterialButton(
+                                                          onPressed: () async {
+                                                            _password2 =
+                                                                TextEditingController(
+                                                                    text: "");
+                                                            showModalBottomSheet<
+                                                                void>(
+                                                              context: context,
+                                                              builder: (
+                                                                  BuildContext context) {
+                                                                return Container(
+                                                                  height: 230,
+                                                                  child: Center(
+                                                                    child: Column(
+                                                                      children: <
+                                                                          Widget>[
+                                                                        Padding(
+                                                                          padding: const EdgeInsets
+                                                                              .fromLTRB(
+                                                                              8.0,
+                                                                              18.0,
+                                                                              8.0,
+                                                                              4.0),
+                                                                          child: const Text(
+                                                                              'Please confirm your password below:'),
+                                                                        ),
+                                                                        Divider(),
+                                                                        Padding(
+                                                                          padding: const EdgeInsets
+                                                                              .fromLTRB(
+                                                                              12.0,
+                                                                              16.0,
+                                                                              8.0,
+                                                                              8.0),
+                                                                          child: TextFormField(
+                                                                            controller: _password2,
+                                                                            obscureText: true,
+                                                                            decoration: InputDecoration(
+                                                                              errorText: ((_password2
+                                                                                  .text !=
+                                                                                  "") &&
+                                                                                  (_password
+                                                                                      .text !=
+                                                                                      _password2
+                                                                                          .text))
+                                                                                  ? "Passwords must match"
+                                                                                  : null,
+                                                                              labelText: "Password",
                                                                             ),
                                                                           ),
-                                                                          RaisedButton(
-                                                                              color: Colors.teal,
-                                                                              child: const Text('Confirm', style: TextStyle(
-                                                                                  color:
-                                                                                  Colors.white)),
-                                                                              onPressed: () async {
-                                                                                if((_password2.text != "") && _password.text == _password2.text) {
-                                                                                  //Do the sign up and sign in
-                                                                                  if (await user
-                                                                                      .signUpAndSignIn(_email.text,_password.text))
-                                                                                  Navigator.of(context).pop();
-                                                                                  Navigator.of(context).pop();
-                                                                                }
-                                                                                /*else {
+                                                                        ),
+                                                                        RaisedButton(
+                                                                            color: Colors
+                                                                                .teal,
+                                                                            child: const Text(
+                                                                                'Confirm',
+                                                                                style: TextStyle(
+                                                                                    color:
+                                                                                    Colors
+                                                                                        .white)),
+                                                                            onPressed: () async {
+                                                                              if ((_password2
+                                                                                  .text !=
+                                                                                  "") &&
+                                                                                  _password
+                                                                                      .text ==
+                                                                                      _password2
+                                                                                          .text) {
+                                                                                //Do the sign up and sign in
+                                                                                if (await user
+                                                                                    .signUpAndSignIn(
+                                                                                    _email
+                                                                                        .text,
+                                                                                    _password
+                                                                                        .text))
+                                                                                  Navigator
+                                                                                      .of(
+                                                                                      context)
+                                                                                      .pop();
+                                                                                Navigator
+                                                                                    .of(
+                                                                                    context)
+                                                                                    .pop();
+                                                                              }
+                                                                              /*else {
                                                                                   //Nothing, We can assume input is in valid format
                                                                                 }*/
-                          }
-                                                                          )
-                                                                        ],
-                                                                      ),
+                                                                            }
+                                                                        )
+                                                                      ],
                                                                     ),
-                                                                  );
-                                                                },
-                                                              );
-
+                                                                  ),
+                                                                );
+                                                              },
+                                                            );
                                                           },
-                                                        //}
-                                                        child: Text(
-                                                          "                   New user? Click to sign up                    ",
-                                                          style: TextStyle(
-                                                              color:
-                                                              Colors.white,
-                                                              fontSize: 16),
+                                                          //}
+                                                          child: Text(
+                                                            "                   New user? Click to sign up                    ",
+                                                            style: TextStyle(
+                                                                color:
+                                                                Colors.white,
+                                                                fontSize: 16),
+                                                          ),
                                                         ),
                                                       ),
                                                     ),
-                                                  ),
-                                                ],
-                                              ),
+                                                  ],
+                                                ),
 
-                                        ],
-                                      )),
-                                    ),
-                                  );
-                                }, // ...to here.
-                              ),
-                            );
+                                              ],
+                                            )),
+                                      ),
+                                    );
+                                  }, // ...to here.
+                                ),
+                              );
 
-                            @override
-                            void dispose() {
-                              _email.dispose();
-                              _password.dispose();
-                              _password2.dispose();
-                              super.dispose();
-                            }
-
-                        }),
+                              @override
+                              void dispose() {
+                                _email.dispose();
+                                _password.dispose();
+                                _password2.dispose();
+                                super.dispose();
+                              }
+                            }),
                   );
               }
             },
           ),
         ],
       ),
+      /*Consumer(
+        builder: (context, UserRepository user, _) {
+          return*/
       body: user.status != Status.Authenticated ?
-          _buildSuggestions()
-      : SnappingSheet(
-        //lockOverflowDrag: true,
-         sheetAbove: SnappingSheetContent(
-           child: Padding(
-             padding: EdgeInsets.only(bottom: 20.0),
-             child: Align(
-               alignment: Alignment(0.90, 1.0),
-             ),
-           ),
-         ),
-         /*onMove: (moveAmount) {
+      _buildSuggestions()
+          : SnappingSheet(
+        sheetAbove: SnappingSheetContent(
+          child: Padding(
+            padding: EdgeInsets.only(bottom: 20.0),
+            child: Align(
+              alignment: Alignment(0.90, 1.0),
+            ),
+          ),
+        ),
+        /*onMove: (moveAmount) {
            setState(() {
              _moveAmount = moveAmount;
            });
          },*/
-         snappingSheetController: _snappingSheetController,
-         snapPositions: const [
-           SnapPosition(positionPixel: 0.0, snappingCurve: Curves.elasticOut, snappingDuration: Duration(milliseconds: 850)),
-           SnapPosition(positionFactor: 0.22),
-           SnapPosition(positionFactor: 0.22),
-         ],
-         child: _buildSuggestions(),
-         grabbingHeight: 53,
-         grabbing: InkWell(
+        snappingSheetController: _snappingSheetController,
+        snapPositions: const [
+          SnapPosition(positionPixel: 0.0,
+              snappingCurve: Curves.elasticOut,
+              snappingDuration: Duration(milliseconds: 850)),
+          SnapPosition(positionFactor: 0.22),
+          SnapPosition(positionFactor: 0.22),
+        ],
+        child: _buildSuggestions(),
+        grabbingHeight: 53,
+        grabbing: InkWell(
           child: Container(
               decoration: BoxDecoration(color: Colors.grey),
               child: ListTile(
@@ -431,21 +536,24 @@ class _RandomWordsState extends State<RandomWords> with SingleTickerProviderStat
               )),
           onTap: () {
             setState(() {
-              if(_snappingSheetController.snapPositions.last != _snappingSheetController.currentSnapPosition) {
-                _snappingSheetController.snapToPosition(_snappingSheetController.snapPositions.last);
+              if (_snappingSheetController.snapPositions.last !=
+                  _snappingSheetController.currentSnapPosition) {
+                _snappingSheetController.snapToPosition(
+                    _snappingSheetController.snapPositions.last);
               }
-              else {
-                _snappingSheetController.snapToPosition(_snappingSheetController.snapPositions.first);
+              else{
+                _snappingSheetController.snapToPosition(
+                    _snappingSheetController.snapPositions.first);
               }
             });
           },
         ),
-         sheetBelow: SnappingSheetContent(
-             heightBehavior: SnappingSheetHeight.fit(),
-             child: SheetContent()
-         ),
-       ),
-      );
+        sheetBelow: SnappingSheetContent(
+            heightBehavior: SnappingSheetHeight.fit(),
+            child: SheetContent()
+        ),
+      ),
+    );
   }
 
   Widget _buildSuggestions() {
@@ -486,12 +594,13 @@ class _RandomWordsState extends State<RandomWords> with SingleTickerProviderStat
           if (alreadySaved) {
             _saved.remove(pair);
             if (user2.status == Status.Authenticated) {
-              _removeOnePair(user2.currentUserEmail, pair);
+              user2._removeOnePair(user2.currentUserEmail, pair);
             }
+            user2.notifyListenersAux();
           } else {
             _saved.add(pair);
             if (user2.status == Status.Authenticated) {
-              _addOnePair(user2.currentUserEmail, pair);
+              user2._addOnePair(user2.currentUserEmail, pair);
             }
           }
 
@@ -508,15 +617,16 @@ class SheetContent extends StatelessWidget {
   Widget build(BuildContext context) {
     final user = Provider.of<UserRepository>(context);
 
+    //Consumer<User
     return Container(
       color: Colors.white,
       child: Container(
           child: ListView(
               children: [
-                ListTile(leading: CircleAvatar(radius: 30, backgroundColor: Colors.blue,
-                ///check if user has a photo...
-                //backgroundImage: Icons.add_a_photo,
-                  //backgroundImage: //user.profilePic.image
+                ListTile(leading: CircleAvatar(radius: 30,
+                  backgroundColor: Colors.transparent,
+                  ///check if user has a photo...
+                  backgroundImage: user._avatar!=null ? user._avatar.image : null
                   ),
               title: Padding(
                 padding: const EdgeInsets.fromLTRB(0.0, 14.0, 0.0, 10.0),
@@ -530,23 +640,19 @@ class SheetContent extends StatelessWidget {
                       color: Colors.teal,
                       child: Text("Change Avatar", style: TextStyle(fontSize: 16)),
                         textColor: Colors.white,
-                        onPressed: () {} /*async
-                        {
-                        PickedFile pickedFile =
-                        await (ImagePicker().getImage(
-                          source: ImageSource.gallery,
-                        ));
-                        if (pickedFile != null) {
-                          user.updateProfilePic(File(pickedFile.path));
-                          user.uploadProfilePic(File(pickedFile.path));
-                        } else {
-                          Scaffold.of(context).showSnackBar(SnackBar(
-                              content: Text(
-                                "No image selected",
-                                style: TextStyle(fontSize: 16),
-                              )));
-                        }
-                      }*/
+                        onPressed: () async {
+                          PickedFile newAvatar = await (ImagePicker().getImage(source: ImageSource.gallery));
+                          if (newAvatar == null) {
+                            //If the user dismisses the dialog without
+                            // selecting an image, show a snack bar with the message “No image selected”.
+                            Scaffold.of(context).showSnackBar(SnackBar(
+                              content: Text("No image selected"),
+                            ));
+                          } else {
+                            user.updateAvatar(newAvatar.path);
+                            user.notifyListenersAux();
+                          }
+                        },
                     ),
                   )),
             )
@@ -564,29 +670,35 @@ class SavedSuggestionsPage extends StatefulWidget {
 class _SavedSuggestionsPageState extends State<SavedSuggestionsPage> {
   @override
   Widget build(BuildContext context) {
+    final user = Provider.of<UserRepository>(context);
 
-    final tiles = _saved.map(
-      (WordPair pair) {
-        return Padding(
-            padding: const EdgeInsets.fromLTRB(0, 8.0, 0, 8.0),
-            child: ListTile(
-          title: Text(
-            pair.asPascalCase,
-            style: _biggerFont,
-          ),
-          trailing: Builder(
-            builder: (context) => IconButton(
-              icon: Icon(Icons.delete_outline),
-              onPressed: () {
-                setState(() {
-                  _saved.remove(pair);
-                });
-              },
-            ),
-          ),
-        ));
-      },
-    );
+    /*return Consumer<UserRepository>(
+        builder: (context, user, _) {*/
+          final tiles = _saved.map(
+                (WordPair pair) {
+              return Padding(
+                  padding: const EdgeInsets.fromLTRB(0, 8.0, 0, 8.0),
+                  child: ListTile(
+                    title: Text(
+                      pair.asPascalCase,
+                      style: _biggerFont,
+                    ),
+                    trailing: Builder(
+                      builder: (context) =>
+                          IconButton(
+                            icon: Icon(Icons.delete_outline),
+                            onPressed: () {
+                              setState(() {
+                                _saved.remove(pair);
+                                user.notifyListenersAux();
+                              });
+                            },
+                          ),
+                    ),
+                  ));
+            },
+          );
+
     final divided = ListTile.divideTiles(
       context: context,
       tiles: tiles,
@@ -598,6 +710,7 @@ class _SavedSuggestionsPageState extends State<SavedSuggestionsPage> {
       ),
       body: ListView(children: divided)
     );
+          //});
   }
 }
 
@@ -640,7 +753,7 @@ class GetAllUserPairsRealtime extends StatelessWidget {
                         icon: Icon(Icons.delete_outline),
                         onPressed: () {
                           _deletePairDoc(user.currentUserEmail, docID);
-
+                          user.notifyListenersAux();
                           WordPair pairToDelete;
                           _saved.forEach((WordPair pair) {
                             String currentPair = pair.asPascalCase;
@@ -650,6 +763,7 @@ class GetAllUserPairsRealtime extends StatelessWidget {
                           });
                           if(pairToDelete!=null) {
                             _saved.remove(pairToDelete);
+                            user.notifyListenersAux();
                           }
 
                         },
